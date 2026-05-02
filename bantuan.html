@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bantuan Driver</title>
+
+<script type="module">
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
+
+const supabase = createClient(
+"https://stymmythxvfhtfxdvcag.supabase.co",
+"sb_publishable_SlQWfTzw1vqLS78Acs5EPQ_ww-bYyqM"
+);
+
+window.supabase = supabase;
+</script>
+
+<style>
+:root{--primary:#e60023}
+body{margin:0;font-family:sans-serif;background:#f5f5f5}
+
+.container{padding:15px}
+
+.card{
+    background:white;
+    padding:20px;
+    border-radius:15px;
+    box-shadow:0 5px 20px rgba(0,0,0,.1);
+    margin-bottom:15px;
+}
+
+button{
+    width:100%;
+    padding:12px;
+    border:none;
+    border-radius:10px;
+    background:var(--primary);
+    color:white;
+    margin-top:10px;
+}
+
+input, textarea{
+    width:100%;
+    padding:12px;
+    margin:8px 0;
+    border-radius:10px;
+    border:1px solid #ddd;
+}
+
+.modal{
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,.5);
+    display:none;
+    align-items:center;
+    justify-content:center;
+}
+
+.modal-box{
+    background:white;
+    padding:20px;
+    border-radius:10px;
+    width:90%;
+    max-width:400px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<button onclick="goBack()">← Kembali</button>
+
+<div class="card">
+<h3>Pusat Bantuan ONAR</h3>
+
+<p>
+Selamat datang di pusat bantuan ONAR, jika ada keluhan tentang sikap konsumen/user 
+mengarah ke kriminal atau pelecehan atau bahkan tidak bayar,
+silahkan isi kolom laporan di bawah, agar kami bisa bantu berikan sanksi atau bahkan 
+memblokir akun yang bersangkutan jika benar terbukti.
+</p>
+
+<p style="color:red;">
+Catatan: Tuduhan palsu/fitnah adalah tindakan yang melanggar etika bahkan hukum.
+Mohon bersikap bijaksana dan tidak memberikan laporan palsu.
+</p>
+</div>
+
+<div class="card">
+<h3>Buat Laporan</h3>
+
+<input id="namaUser" placeholder="Nama user yang dilaporkan">
+<textarea id="alasan" placeholder="Alasan laporan"></textarea>
+
+<button onclick="kirimLaporan()">Kirim Laporan</button>
+</div>
+
+</div>
+
+<!-- MODAL -->
+<div id="modal" class="modal">
+<div class="modal-box">
+<p id="modalText"></p>
+<button onclick="closeModal()">OK</button>
+</div>
+</div>
+
+<!-- 🔥 MODAL ORDER -->
+<div id="orderModal" class="modal">
+<div class="modal-box" style="max-height:80vh;overflow:auto">
+<h3>ORDER MASUK</h3>
+<div id="orderContent"></div>
+<button onclick="terimaOrder()">TERIMA</button>
+<button onclick="tolakOrder()">TOLAK</button>
+</div>
+</div>
+
+<script>
+let driverData=null
+let modalOpen=false
+let currentOrder=null
+let orderTimer=null
+
+document.addEventListener("DOMContentLoaded",init)
+
+async function init(){
+    const token = localStorage.getItem("token")
+
+    const { data } = await supabase.rpc("cek_session",{p_token:token})
+    if(!data || data.length===0){
+        location.href="index.html"
+        return
+    }
+
+    const userId = data[0].user_id
+
+    const res = await supabase.from("drivers").select("*").eq("id",userId).single()
+    driverData = res.data
+
+    listenOrder()
+}
+
+// ================= LAPORAN =================
+async function kirimLaporan(){
+    const namaUser = document.getElementById("namaUser").value.trim()
+    const alasan = document.getElementById("alasan").value.trim()
+
+    if(!namaUser || !alasan){
+        showModal("Semua field wajib diisi")
+        return
+    }
+
+    await supabase.from("laporan").insert({
+        pelapor_id: driverData.id,
+        nama_pelapor: driverData.nama,
+        nama_terlapor: namaUser,
+        alasan: alasan
+    })
+
+    showModal("Laporan berhasil dikirim")
+    document.getElementById("namaUser").value=""
+    document.getElementById("alasan").value=""
+}
+
+// ================= ORDER =================
+function listenOrder(){
+    supabase.channel('orders')
+    .on('postgres_changes',
+    {event:'INSERT',schema:'public',table:'orders'},
+    async payload=>{
+
+        if(!driverData.on_bid) return
+        if(driverData.status!=="aktif") return
+        if(modalOpen) return
+
+        const { data:cek } = await supabase
+        .from("orders")
+        .select("id")
+        .eq("driver_id",driverData.id)
+        .neq("status","selesai")
+
+        if(cek.length>0) return
+
+        showOrder(payload.new)
+    }).subscribe()
+}
+
+async function showOrder(order){
+    modalOpen=true
+    currentOrder=order
+
+    let html = `
+    <p><b>Jenis:</b> ${order.jenis}</p>
+    <p><b>Jemput:</b> ${order.titik_jemput}</p>
+    <p><b>Antar:</b> ${order.titik_antar}</p>
+    <p><b>Tarif:</b> ${order.ongkir}</p>
+    <p><b>Total:</b> ${order.total}</p>
+    `
+
+    if(order.jenis==="makanan"){
+        const { data } = await supabase
+        .from("order_detail")
+        .select("qty,menu(nama)")
+        .eq("order_id",order.id)
+
+        html+="<div style='max-height:150px;overflow:auto'>"
+        data.forEach(d=>{
+            html+=`<p>${d.menu.nama} x${d.qty}</p>`
+        })
+        html+="</div>"
+    }
+
+    orderContent.innerHTML=html
+    orderModal.style.display="flex"
+
+    orderTimer=setTimeout(closeOrder,7000)
+}
+
+window.terimaOrder = async ()=>{
+    await supabase.from("orders")
+    .update({
+        driver_id:driverData.id,
+        status:"diambil"
+    })
+    .eq("id",currentOrder.id)
+    .is("driver_id",null)
+
+    closeOrder()
+}
+
+window.tolakOrder = ()=>closeOrder()
+
+function closeOrder(){
+    modalOpen=false
+    currentOrder=null
+    clearTimeout(orderTimer)
+    orderModal.style.display="none"
+}
+
+// ================= UTIL =================
+function showModal(msg){
+    modalText.innerText=msg
+    modal.style.display="flex"
+}
+
+function closeModal(){
+    modal.style.display="none"
+}
+
+function goBack(){
+    location.href="index.html"
+}
+</script>
+
+</body>
+</html>

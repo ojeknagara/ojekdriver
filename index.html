@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Driver</title>
+
+<script type="module">
+import { supabase } from './supabaseClient.js'
+window.supabase = supabase
+</script>
+
+<style>
+:root{
+  --primary:#e60023;
+  --gray:#f5f5f5;
+}
+
+body{
+  margin:0;
+  font-family:sans-serif;
+  background:var(--primary);
+}
+
+.hidden{display:none}
+
+.logo{
+  height:100vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:32px;
+  color:var(--primary);
+}
+
+.container{padding:20px}
+
+.card{
+  background:white;
+  padding:20px;
+  border-radius:15px;
+  box-shadow:0 5px 20px rgba(0,0,0,.1)
+}
+
+input{
+  width:100%;
+  padding:12px;
+  margin:8px 0;
+  border-radius:10px;
+  border:1px solid #ddd
+}
+
+button{
+  width:100%;
+  padding:12px;
+  border:none;
+  border-radius:10px;
+  background:var(--primary);
+  color:white;
+  cursor:pointer;
+  transition:.2s
+}
+
+button:hover{opacity:.8}
+button:disabled{background:#ccc}
+
+.link{
+  text-align:center;
+  margin-top:10px;
+  color:var(--primary);
+  cursor:pointer
+}
+
+.grid{
+  display:grid;
+  grid-template-columns:repeat(2,1fr);
+  gap:10px
+}
+
+.modal{
+  position:fixed;
+  top:0;
+  left:0;
+  width:100%;
+  height:100%;
+  background:rgba(0,0,0,.5);
+  display:none;
+  align-items:center;
+  justify-content:center;
+  z-index:999;
+}
+
+.modal-content{
+  background:white;
+  padding:20px;
+  border-radius:10px;
+  text-align:center;
+  width:90%;
+  max-width:350px;
+}
+
+.file-label{
+  font-size:12px;
+  margin-top:8px
+}
+</style>
+</head>
+
+<body>
+
+<!-- LOGO -->
+<div id="logo" class="logo">
+<img src="Emblem_motorbike_ONAR_dengan_bendera_Indonesia-removebg-preview.png" alt="">
+</div>
+
+<!-- LOGIN -->
+<div id="login" class="container hidden">
+<div class="card">
+<h3>Login</h3>
+
+<input id="login_wa" placeholder="No WA">
+<input id="login_pass" type="password" placeholder="Password">
+
+<button id="btnLogin" onclick="login()">LOGIN</button>
+
+<div class="link" onclick="showRegister()">Belum punya akun? Daftar</div>
+<div class="link" onclick="bantuan()">Pusat Bantuan</div>
+</div>
+</div>
+
+<!-- REGISTER -->
+<div id="register" class="container hidden">
+<div class="card">
+<h3>Daftar Driver</h3>
+
+<input id="r_nama" placeholder="Nama">
+<input id="r_alamat" placeholder="Alamat">
+<input id="r_nik" placeholder="NIK">
+<input id="r_wa" placeholder="No WA">
+<input id="r_pass" type="password" placeholder="Password">
+
+<div class="file-label">Foto Selfie</div>
+<input type="file" id="r_selfie">
+
+<div class="file-label">Foto KTP</div>
+<input type="file" id="r_ktp">
+
+<div class="file-label">Foto STNK</div>
+<input type="file" id="r_stnk">
+
+<div class="file-label">Foto Motor</div>
+<input type="file" id="r_motor">
+
+<div class="file-label">Foto Plat</div>
+<input type="file" id="r_plat">
+
+<button id="btnRegister" onclick="register()">DAFTAR</button>
+<div class="link" onclick="showLogin()">Kembali ke Login</div>
+</div>
+</div>
+
+<!-- DASHBOARD -->
+<div id="dashboard" class="container hidden">
+<div class="card">
+
+<div id="namaDriver"></div>
+
+<div class="grid">
+<button onclick="window.location.href='bid.html'">AKTIFKAN OJEK</button>
+<button>RIWAYAT ORDER</button>
+<button>RIWAYAT PENGHASILAN</button>
+<button onclick="window.location.href='bantuan.html'">BANTUAN</button>
+<button onclick="window.location.href='profile.html'">PROFILE</button>
+</div>
+
+</div>
+</div>
+
+<img src="Emblem_motorbike_ONAR_dengan_bendera_Indonesia-removebg-preview.png" alt="">
+
+<!-- MODAL INFO -->
+<div id="modal" class="modal">
+<div class="modal-content">
+<p id="modalText"></p>
+<button onclick="closeModal()">OK</button>
+</div>
+</div>
+
+<!-- 🔥 GLOBAL MODAL SYSTEM -->
+<script type="module" src="modalglobal.js"></script>
+
+<script>
+document.addEventListener("DOMContentLoaded",()=>{
+
+const logo = document.getElementById("logo")
+const loginPage = document.getElementById("login")
+const registerPage = document.getElementById("register")
+const dashboard = document.getElementById("dashboard")
+
+let driverData = null
+
+// ================= MODAL =================
+window.showModal = (msg)=>{
+    modalText.innerText = msg
+    modal.style.display = "flex"
+}
+
+window.closeModal = ()=>{
+    modal.style.display = "none"
+}
+
+// ================= NAV =================
+window.showLogin = ()=>{
+    registerPage.classList.add("hidden")
+    loginPage.classList.remove("hidden")
+}
+
+window.showRegister = ()=>{
+    loginPage.classList.add("hidden")
+    registerPage.classList.remove("hidden")
+}
+
+// ================= SESSION =================
+setTimeout(checkSession,1500)
+
+async function checkSession(){
+    logo.style.display="none"
+
+    const token = localStorage.getItem("token")
+
+    if(!token){
+        loginPage.classList.remove("hidden")
+        return
+    }
+
+    const { data } = await supabase.rpc("cek_session",{p_token:token})
+
+    if(!data || data.length===0){
+        localStorage.removeItem("token")
+        loginPage.classList.remove("hidden")
+        return
+    }
+
+    loadDashboard(data[0].user_id)
+}
+
+// ================= LOGIN =================
+window.login = async ()=>{
+    const wa = login_wa.value.trim()
+    const pass = login_pass.value.trim()
+
+    if(!wa || !pass){
+        showModal("Semua field wajib diisi")
+        return
+    }
+
+    btnLogin.disabled = true
+    btnLogin.innerText = "Loading..."
+
+    const { data } = await supabase
+    .from("drivers")
+    .select("*")
+    .eq("no_wa",wa)
+    .eq("password",pass)
+    .maybeSingle()
+
+    if(!data){
+        showModal("Nomor / password salah")
+        resetBtn()
+        return
+    }
+
+    const { data:token } = await supabase.rpc("login_session",{
+        p_user_id:data.id,
+        p_role:"driver",
+        p_device:navigator.userAgent
+    })
+
+    localStorage.setItem("token",token)
+
+    loadDashboard(data.id)
+}
+
+function resetBtn(){
+    btnLogin.disabled = false
+    btnLogin.innerText = "LOGIN"
+}
+
+// ================= DASHBOARD =================
+async function loadDashboard(id){
+    loginPage.classList.add("hidden")
+    dashboard.classList.remove("hidden")
+
+    const { data } = await supabase
+    .from("drivers")
+    .select("*")
+    .eq("id",id)
+    .maybeSingle()
+
+    driverData = data
+
+    document.getElementById("namaDriver").innerText =
+      "Halo, " + (data?.nama || "Driver")
+
+    // 🔥 kirim ke global system
+    window.DRIVER_ID = data.id
+    window.DRIVER_STATUS = data.status
+    window.DRIVER_ON_BID = data.on_bid
+}
+
+// ================= LOGOUT =================
+window.logout = async ()=>{
+    const token = localStorage.getItem("token")
+
+    await supabase.rpc("logout_session",{p_token:token})
+
+    localStorage.removeItem("token")
+
+    location.reload()
+}
+
+// ================= REGISTER =================
+function compress(file){
+    return new Promise(resolve=>{
+        const img=new Image()
+        const reader=new FileReader()
+        reader.onload=e=>img.src=e.target.result
+        img.onload=()=>{
+            const canvas=document.createElement("canvas")
+            const scale=800/img.width
+            canvas.width=800
+            canvas.height=img.height*scale
+            const ctx=canvas.getContext("2d")
+            ctx.drawImage(img,0,0,canvas.width,canvas.height)
+            canvas.toBlob(b=>resolve(b),"image/jpeg",0.7)
+        }
+        reader.readAsDataURL(file)
+    })
+}
+
+async function upload(file,name){
+    const blob=await compress(file)
+    const fileName=Date.now()+"_"+name+".jpg"
+
+    await supabase.storage
+      .from("data-ojek")
+      .upload(fileName,blob)
+
+    return fileName
+}
+
+window.register = async ()=>{
+    const nama = r_nama.value.trim()
+    const alamat = r_alamat.value.trim()
+    const nik = r_nik.value.trim()
+    const wa = r_wa.value.trim()
+    const pass = r_pass.value.trim()
+
+    const files = [
+        r_selfie.files[0],
+        r_ktp.files[0],
+        r_stnk.files[0],
+        r_motor.files[0],
+        r_plat.files[0]
+    ]
+
+    if(!nama || !alamat || !nik || !wa || !pass || files.includes(undefined)){
+        showModal("Semua data wajib diisi")
+        return
+    }
+
+    try{
+        const selfie = await upload(files[0],"selfie")
+        const ktp = await upload(files[1],"ktp")
+        const stnk = await upload(files[2],"stnk")
+        const motor = await upload(files[3],"motor")
+        const plat = await upload(files[4],"plat")
+
+        await supabase.from("drivers").insert({
+            nama,alamat,nik,
+            no_wa:wa,
+            password:pass,
+            foto:selfie,
+            foto_ktp:ktp,
+            foto_stnk:stnk,
+            foto_motor:motor,
+            foto_plat:plat,
+            status:"pending"
+        })
+
+        showModal("Berhasil daftar")
+        showLogin()
+
+    }catch{
+        showModal("Upload gagal")
+    }
+}
+
+// ================= BANTUAN =================
+window.bantuan = ()=>{
+    showModal("Hubungi admin jika ada kendala")
+}
+
+})
+</script>
+
+</body>
+</html>

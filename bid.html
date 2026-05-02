@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Driver - ON BID</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+
+
+<script type="module">
+import { supabase } from './supabaseClient.js'
+window.supabase = supabase
+</script>
+
+<style>
+:root{--primary:#e60023;--gray:#f5f5f5}
+body{margin:0;font-family:sans-serif;background:#f5f5f5}
+
+#map{height:60vh}
+
+.container{padding:15px}
+
+.card{
+    background:white;
+    padding:15px;
+    border-radius:12px;
+    box-shadow:0 5px 20px rgba(0,0,0,.1)
+}
+
+/* TOGGLE MODERN */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 55px;
+  height: 28px;
+}
+
+.switch input {display:none;}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  inset: 0;
+  background-color: #ccc;
+  transition: .3s;
+  border-radius: 30px;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 22px;
+  width: 22px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: .3s;
+  border-radius: 50%;
+}
+
+input:checked + .slider {
+  background-color: var(--primary);
+}
+
+input:checked + .slider:before {
+  transform: translateX(27px);
+}
+
+.toggle-row{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+}
+
+.status-text{
+    font-weight:bold;
+}
+p{
+    display: flex;
+    margin-left: 5%;
+    font: bold;
+}
+/* MODAL */
+.modal{
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,.5);
+    display:none;
+    align-items:center;
+    justify-content:center;
+}
+
+.modal-content{
+    background:white;
+    padding:20px;
+    border-radius:10px;
+}
+button{
+    width:100%;
+    padding:12px;
+    margin-top:10px;
+    border:none;
+    border-radius:10px;
+    background:var(--primary);
+    color:white;
+}
+button:hover{
+    background-color: #7ee5ec;
+}
+</style>
+</head>
+
+<body>
+    <button onclick="window.location.href='index.html'">Kembali</button>
+
+<div id="map"></div>
+
+<div class="container">
+<div class="card">
+<div class="toggle-row">
+    <div>
+        <div>Status Ojek</div>
+        <div id="statusText" class="status-text">OFF</div>
+    </div>
+
+    <label class="switch">
+        <input type="checkbox" id="toggleBid">
+        <span class="slider"></span>
+    </label>
+  
+</div>
+</div>
+</div>
+  <p>aktifkan on bid agar bisa terima order !</p>
+  <p>dan matikan on bid jika ingin istirahat agar tidak ada order yang masuk</p>
+<!-- MODAL ORDER -->
+<div id="orderModal" class="modal">
+<div class="modal-content">
+<h3>ORDER MASUK</h3>
+<div id="orderContent"></div>
+<button onclick="terimaOrder()">TERIMA</button>
+<button onclick="tolakOrder()">TOLAK</button>
+</div>
+</div>
+
+
+<script type="module" src="modalglobal.js"></script>
+
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+<script>
+let map, marker, driverData
+let modalOpen=false, currentOrder=null
+
+document.addEventListener("DOMContentLoaded",init)
+
+async function init(){
+    const token = localStorage.getItem("token")
+
+    const { data } = await supabase.rpc("cek_session",{p_token:token})
+    if(!data || data.length===0){
+        location.href="index.html"
+        return
+    }
+
+    const userId = data[0].user_id
+
+    const res = await supabase.from("drivers").select("*").eq("id",userId).single()
+    driverData = res.data
+
+    initMap()
+    listenOrder()
+    setupToggle()
+}
+
+function initMap(){
+    map = L.map('map').setView([0,0],13)
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map)
+
+    navigator.geolocation.watchPosition(async pos=>{
+        const lat = pos.coords.latitude
+        const lng = pos.coords.longitude
+
+        if(!marker){
+            marker = L.marker([lat,lng]).addTo(map)
+        }else{
+            marker.setLatLng([lat,lng])
+        }
+
+        map.setView([lat,lng])
+
+        await supabase.from("drivers")
+        .update({lat,lng})
+        .eq("id",driverData.id)
+    })
+}
+
+function setupToggle(){
+    const toggle = document.getElementById("toggleBid")
+    const statusText = document.getElementById("statusText")
+
+    toggle.checked = driverData.on_bid
+    updateText()
+
+    toggle.addEventListener("change", async ()=>{
+        await supabase.from("drivers")
+        .update({on_bid:toggle.checked})
+        .eq("id",driverData.id)
+
+        driverData.on_bid = toggle.checked
+        updateText()
+    })
+
+    function updateText(){
+        statusText.innerText = toggle.checked ? "ONLINE" : "OFFLINE"
+        statusText.style.color = toggle.checked ? "green" : "gray"
+    }
+}
+
+// ================= ORDER =================
+function listenOrder(){
+    supabase.channel('orders')
+    .on('postgres_changes',
+    {event:'INSERT',schema:'public',table:'orders'},
+    async payload=>{
+
+        if(!driverData.on_bid) return
+        if(modalOpen) return
+
+        const order = payload.new
+        showOrder(order)
+    }).subscribe()
+}
+
+async function showOrder(order){
+    modalOpen=true
+    currentOrder=order
+
+    let html = `
+    <p>${order.jenis}</p>
+    <p>${order.titik_jemput}</p>
+    <p>${order.titik_antar}</p>
+    <p>Tarif: ${order.ongkir}</p>
+    <p>Total: ${order.total}</p>
+    `
+
+    document.getElementById("orderContent").innerHTML = html
+    document.getElementById("orderModal").style.display="flex"
+
+    setTimeout(closeModal,10000)
+}
+
+window.terimaOrder = async ()=>{
+    await supabase.from("orders")
+    .update({
+        driver_id:driverData.id,
+        status:"diambil"
+    })
+    .eq("id",currentOrder.id)
+    .is("driver_id",null)
+
+    closeModal()
+}
+
+window.tolakOrder = ()=> closeModal()
+
+function closeModal(){
+    modalOpen=false
+    currentOrder=null
+    document.getElementById("orderModal").style.display="none"
+}
+</script>
+
+</body>
+</html>

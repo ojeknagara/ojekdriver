@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Navigasi Driver - Ojek Nagara ONAR</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
+    
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
+    
+    <script type="module">
+        import { supabase } from './supabaseClient.js';
+        window.supabase = supabase;
+    </script>
+
+    <style>
+        :root {
+            --primary: #ff0000;
+            --dark-red: #cc0000;
+            --white: #ffffff;
+            --gray: #f8f9fa;
+            --text: #212529;
+            --shadow: 0 -5px 25px rgba(0,0,0,0.15);
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Lexend', sans-serif;
+            background: var(--gray);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* MAP CONFIG */
+        #map { flex: 1; width: 100%; z-index: 1; }
+        .leaflet-routing-container { display: none !important; }
+
+        /* PANEL BOTTOM */
+        .order-panel {
+            background: var(--white);
+            padding: 20px;
+            border-radius: 25px 25px 0 0;
+            box-shadow: var(--shadow);
+            z-index: 100;
+            position: relative;
+        }
+
+        .status-badge {
+            position: absolute;
+            top: -15px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--primary);
+            color: white;
+            padding: 5px 20px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            box-shadow: 0 4px 10px rgba(255,0,0,0.3);
+        }
+
+        .user-card {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .user-avatar {
+            width: 50px;
+            height: 50px;
+            background: var(--gray);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+        }
+
+        .user-meta { flex: 1; }
+        .user-meta h3 { margin: 0; font-size: 16px; color: var(--text); }
+        .user-meta p { margin: 2px 0 0; font-size: 12px; color: #777; }
+
+        .price-box { text-align: right; }
+        .price-box span { font-size: 10px; color: #aaa; display: block; }
+        .price-box b { font-size: 18px; color: var(--primary); }
+
+        .notes-box {
+            background: #fff5f5;
+            padding: 12px;
+            border-radius: 12px;
+            font-size: 13px;
+            color: #555;
+            margin-bottom: 20px;
+            border: 1px dashed var(--primary);
+        }
+
+        .btn-group {
+            display: grid;
+            grid-template-columns: 60px 1fr;
+            gap: 12px;
+        }
+
+        .btn-icon {
+            background: var(--gray);
+            border: none;
+            border-radius: 15px;
+            font-size: 24px;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        .btn-action {
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 15px;
+            font-weight: 800;
+            font-size: 14px;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            box-shadow: 0 4px 15px rgba(255,0,0,0.2);
+        }
+
+        /* CHAT MODAL */
+        #chatModal {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: white;
+            display: none;
+            flex-direction: column;
+            z-index: 1000;
+        }
+        .chat-header {
+            background: var(--primary);
+            color: white;
+            padding: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        #chatContent { flex: 1; padding: 20px; overflow-y: auto; background: #fafafa; }
+        .chat-input-area { padding: 15px; display: flex; gap: 10px; border-top: 1px solid #eee; }
+        .chat-input-area input { flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 10px; }
+
+        /* ONAR CUSTOM MODAL */
+        .onar-modal-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+        }
+        .onar-modal-box {
+            background: white;
+            width: 85%;
+            max-width: 320px;
+            padding: 30px;
+            border-radius: 20px;
+            text-align: center;
+        }
+
+        /* BUBBLE CHAT */
+        .b-driver { text-align: right; margin-bottom: 10px; }
+        .b-driver span { background: var(--primary); color: white; padding: 8px 15px; border-radius: 15px 15px 0 15px; display: inline-block; }
+        .b-user { text-align: left; margin-bottom: 10px; }
+        .b-user span { background: #e9ecef; color: #333; padding: 8px 15px; border-radius: 15px 15px 15px 0; display: inline-block; }
+    </style>
+</head>
+<body>
+
+    <div id="map"></div>
+
+    <div class="order-panel">
+        <div class="status-badge" id="statusLabel">MEMUAT DATA...</div>
+        
+        <div class="user-card">
+            <div class="user-avatar">👤</div>
+            <div class="user-meta">
+                <h3 id="txtNamaUser">Memuat...</h3>
+                <p id="txtJarak">Menghitung jarak...</p>
+            </div>
+            <div class="price-box">
+                <span>Tagihan</span>
+                <b id="txtTotal">Rp 0</b>
+            </div>
+        </div>
+
+        <div class="notes-box" id="txtCatatan">Catatan: -</div>
+
+        <div class="btn-group">
+            <button class="btn-icon" onclick="toggleChat()">💬</button>
+            <button class="btn-action" id="btnMain" onclick="mainAction()">TUNGGU BENTAR</button>
+        </div>
+    </div>
+
+    <div id="chatModal">
+        <div class="chat-header">
+            <b>Chat Penumpang</b>
+            <button onclick="toggleChat()" style="background:none; border:none; color:white; font-size:22px;">✕</button>
+        </div>
+        <div id="chatContent"></div>
+        <div class="chat-input-area">
+            <input type="text" id="chatInp" placeholder="Tulis pesan ke penumpang...">
+            <button onclick="kirimChat()" class="btn-action" style="padding: 10px 20px; width:auto;">KIRIM</button>
+        </div>
+    </div>
+
+    <div id="modalOverlay" class="onar-modal-overlay">
+        <div class="onar-modal-box">
+            <h3 id="modalTitle" style="margin-top:0;">Info</h3>
+            <p id="modalMsg" style="color:#666;"></p>
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-top:25px;">
+                <button onclick="closeModal()" id="btnModalBatal" style="background:#eee; border:none; padding:12px; border-radius:10px; cursor:pointer;">BATAL</button>
+                <button id="btnModalOk" class="btn-action" style="padding:12px;">OKE</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        let map, routingControl;
+        let driverMarker, pickupMarker, destinationMarker;
+        let driverId, currentOrderId, orderData;
+        let lastLat, lastLng;
+
+        const motorIcon = L.icon({
+            iconUrl: 'https://cdn-icons-png.flaticon.com/512/713/713437.png',
+            iconSize: [35, 35],
+            iconAnchor: [17, 17]
+        });
+
+        // ==========================================
+        // 1. SISTEM INIT ANTI-SILENT REDIRECT
+        // ==========================================
+        async function init() {
+            try {
+                const token = localStorage.getItem('token');
+                if (!token) return showOnarModal("Error Sesi", "Token tidak ditemukan. Silakan login ulang.", () => location.href = 'index.html', false);
+                
+                const { data: session, error: errSession } = await supabase.rpc('cek_session', { p_token: token });
+                if (errSession) throw errSession;
+                if (!session || !session.length) return showOnarModal("Error Sesi", "Sesi Anda sudah kadaluarsa.", () => location.href = 'index.html', false);
+                
+                driverId = session[0].user_id;
+
+                const { data: active, error: errActive } = await supabase.rpc('get_active_order_driver', { p_driver_id: driverId });
+                if (errActive) throw errActive;
+                
+                // Mencegah redirect diam-diam jika tidak ada order terdeteksi
+                if (!active || !active.length) {
+                    return showOnarModal("Pesanan Kosong", "Tidak ada order aktif yang terkait dengan akun Anda saat ini. Kembali ke Menu Utama.", () => location.href = 'index.html', false);
+                }
+                
+                currentOrderId = active[0].order_id;
+                
+                const { data: fullData, error: errFull } = await supabase.from('orders').select('*, users(nama)').eq('id', currentOrderId).single();
+                if (errFull) throw errFull;
+                
+                orderData = fullData;
+
+                setupUI();
+                setupMap();
+                startTracking();
+                listenRealtime();
+                
+            } catch (error) {
+                console.error("Kesalahan Sistem Init:", error);
+                showOnarModal("Terjadi Kesalahan", "Gagal memuat data dari database: " + error.message, () => location.href = 'index.html', false);
+            }
+        }
+
+        function setupUI() {
+            const namaUser = orderData.users ? orderData.users.nama : "Tanpa Nama";
+            document.getElementById('txtNamaUser').innerText = namaUser;
+            document.getElementById('txtTotal').innerText = "Rp " + Number(orderData.total).toLocaleString('id-ID');
+            document.getElementById('txtCatatan').innerText = `Catatan: ${orderData.deskripsi_barang || '-'}`;
+            updateStatusUI();
+        }
+
+        function updateStatusUI() {
+            const label = document.getElementById('statusLabel');
+            const btn = document.getElementById('btnMain');
+            
+            if (orderData.status === 'on_progress') {
+                label.innerText = "MENUJU LOKASI JEMPUT";
+                btn.innerText = "SAYA SUDAH SAMPAI";
+            } else if (orderData.status === 'arrived_pickup') {
+                label.innerText = "DRIVER TIBA DI LOKASI";
+                btn.innerText = "NAIKKAN PENUMPANG";
+            } else if (orderData.status === 'on_trip') {
+                label.innerText = "MENGANTAR PENUMPANG";
+                btn.innerText = "SELESAIKAN ORDER";
+            }
+        }
+
+        // ==========================================
+        // 2. SISTEM MAP & NAVIGATION
+        // ==========================================
+        function setupMap() {
+            map = L.map('map', { zoomControl: false }).setView([orderData.pickup_lat, orderData.pickup_lng], 15);
+            L.tileLayer('https://{s}.tile.osm.org/{z}/{x}/{y}.png').addTo(map);
+
+            pickupMarker = L.marker([orderData.pickup_lat, orderData.pickup_lng]).addTo(map).bindPopup("Lokasi Jemput");
+            destinationMarker = L.marker([orderData.drop_lat, orderData.drop_lng]).addTo(map).bindPopup("Tujuan");
+        }
+
+        function updateNavigation(driverLat, driverLng) {
+            if (routingControl) map.removeControl(routingControl);
+
+            let targetLat = orderData.pickup_lat;
+            let targetLng = orderData.pickup_lng;
+
+            if (orderData.status === 'on_trip') {
+                targetLat = orderData.drop_lat;
+                targetLng = orderData.drop_lng;
+            }
+
+            routingControl = L.Routing.control({
+                waypoints: [
+                    L.latLng(driverLat, driverLng),
+                    L.latLng(targetLat, targetLng)
+                ],
+                routeWhileDragging: false,
+                addWaypoints: false,
+                lineOptions: { styles: [{ color: '#ff0000', weight: 6 }] }
+            }).addTo(map);
+
+            const dist = map.distance([driverLat, driverLng], [targetLat, targetLng]) / 1000;
+            document.getElementById('txtJarak').innerText = `Jarak: ${dist.toFixed(1)} Km lagi`;
+        }
+
+        function startTracking() {
+            if ("geolocation" in navigator) {
+                navigator.geolocation.watchPosition(async (pos) => {
+                    const { latitude, longitude } = pos.coords;
+                    lastLat = latitude; lastLng = longitude;
+
+                    if (!driverMarker) {
+                        driverMarker = L.marker([latitude, longitude], { icon: motorIcon }).addTo(map);
+                    } else {
+                        driverMarker.setLatLng([latitude, longitude]);
+                    }
+
+                    await supabase.from('drivers').update({ lat: latitude, lng: longitude }).eq('id', driverId);
+                    updateNavigation(latitude, longitude);
+                }, (err) => console.log("GPS Timeout/Error:", err), { enableHighAccuracy: true });
+            }
+        }
+
+        // ==========================================
+        // 3. LOGIKA TOMBOL & AKSI
+        // ==========================================
+        window.mainAction = async () => {
+            const status = orderData.status;
+
+            if (status === 'on_progress') {
+                await supabase.rpc('driver_arrived_pickup', { p_order_id: currentOrderId, p_driver_id: driverId });
+            } 
+            else if (status === 'arrived_pickup') {
+                await supabase.rpc('mulai_perjalanan', { p_order_id: currentOrderId, p_driver_id: driverId });
+            } 
+            else if (status === 'on_trip') {
+                showOnarModal("Konfirmasi Selesai", `Apakah Anda sudah menerima pembayaran sebesar ${document.getElementById('txtTotal').innerText}?`, async () => {
+                    await supabase.rpc('selesaikan_order', { p_order_id: currentOrderId, p_driver_id: driverId });
+                    // Explicit redirect setelah sukses
+                    location.href = 'index.html';
+                }, true); // Tampilkan tombol Batal
+            }
+        };
+
+        // ==========================================
+        // 4. REALTIME LISTENER
+        // ==========================================
+        function listenRealtime() {
+            supabase.channel('order_flow')
+                .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders', filter: `id=eq.${currentOrderId}` }, (p) => {
+                    orderData.status = p.new.status;
+                    
+                    if (orderData.status === 'cancelled') {
+                        showOnarModal("Order Batal", "Pesanan ini baru saja dibatalkan oleh Pengguna.", () => location.href = 'index.html', false);
+                    } else if (orderData.status === 'done') {
+                        // Mencegah double redirect jika sudah dieksekusi di mainAction
+                        console.log("Order dinyatakan selesai di DB.");
+                    } else {
+                        updateStatusUI();
+                        if(lastLat) updateNavigation(lastLat, lastLng);
+                    }
+                }).subscribe();
+
+            supabase.channel('chat_live')
+                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages', filter: `order_id=eq.${currentOrderId}` }, () => {
+                    loadChat();
+                }).subscribe();
+        }
+
+        // ==========================================
+        // 5. SISTEM CHAT
+        // ==========================================
+        window.toggleChat = () => {
+            const modal = document.getElementById('chatModal');
+            modal.style.display = modal.style.display === 'flex' ? 'none' : 'flex';
+            if (modal.style.display === 'flex') loadChat();
+        }
+
+        async function loadChat() {
+            const { data } = await supabase.from('chat_messages').select('*').eq('order_id', currentOrderId).order('created_at', { ascending: true });
+            const box = document.getElementById('chatContent');
+            box.innerHTML = data.map(m => `
+                <div class="${m.sender_id === driverId ? 'b-driver' : 'b-user'}">
+                    <span>${m.pesan}</span>
+                </div>
+            `).join('');
+            box.scrollTop = box.scrollHeight;
+        }
+
+        window.kirimChat = async () => {
+            const inp = document.getElementById('chatInp');
+            const val = inp.value.trim();
+            if (!val) return;
+            await supabase.from('chat_messages').insert({ order_id: currentOrderId, sender_id: driverId, pesan: val });
+            inp.value = '';
+        }
+
+        // ==========================================
+        // 6. FUNGSI MODAL KUSTOM
+        // ==========================================
+        // Parameter showCancelBtn untuk mengatur apakah tombol batal dimunculkan atau tidak
+        window.showOnarModal = (title, msg, onOk, showCancelBtn = true) => {
+            document.getElementById('modalTitle').innerText = title;
+            document.getElementById('modalMsg').innerText = msg;
+            
+            const btnBatal = document.getElementById('btnModalBatal');
+            btnBatal.style.display = showCancelBtn ? 'block' : 'none';
+            
+            document.getElementById('modalOverlay').style.display = 'flex';
+            document.getElementById('btnModalOk').onclick = () => {
+                closeModal();
+                if(onOk) onOk();
+            };
+        }
+        window.closeModal = () => document.getElementById('modalOverlay').style.display = 'none';
+
+        // Start App
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            init();
+        }
+    </script>
+</body>
+</html>
