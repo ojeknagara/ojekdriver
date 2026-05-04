@@ -20,7 +20,11 @@ style.innerHTML = `
 /* Modal Overlay Global */
 .onar-overlay {
     position: fixed;
-    top: 0; left: 0; width: 100%; height: 100%;
+    top: 0; 
+    left: 0; 
+    width: 100vw; /* FIX: Gunakan vw agar tidak melebihi layar */
+    height: 100vh; /* FIX: Gunakan vh */
+    box-sizing: border-box; /* FIX: Mencegah padding membuat layar scroll ke samping */
     background: rgba(0, 0, 0, 0.75);
     backdrop-filter: blur(4px);
     display: none;
@@ -39,8 +43,9 @@ style.innerHTML = `
 /* Box Modal Order & Alert */
 .onar-modal {
     background: var(--white);
-    width: 100%;
+    width: 90%; /* FIX: Beri jarak aman 10% di layar HP */
     max-width: 400px;
+    box-sizing: border-box; /* FIX: Mencegah isi modal luber keluar kotak */
     border-radius: var(--radius);
     overflow: hidden;
     box-shadow: var(--shadow);
@@ -163,7 +168,9 @@ style.innerHTML = `
 }
 
 @media (max-width: 480px) {
-    .onar-modal { max-width: 90%; }
+    .onar-modal { 
+        max-width: 90%; /* Pastikan responsif di HP kecil */
+    }
 }
 `;
 document.head.appendChild(style);
