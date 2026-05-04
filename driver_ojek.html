@@ -30,24 +30,35 @@
             margin: 0;
             font-family: 'Lexend', sans-serif;
             background: var(--gray);
-            height: 100vh;
+            /* FIX 1: Gunakan dvh (Dynamic Viewport Height) agar adaptif dengan address bar browser HP */
+            height: 100vh; /* Fallback untuk browser lama */
+            height: 100dvh; 
             display: flex;
             flex-direction: column;
             overflow: hidden;
         }
 
         /* MAP CONFIG */
-        #map { flex: 1; width: 100%; z-index: 1; }
+        #map { 
+            flex: 1; 
+            width: 100%; 
+            z-index: 1; 
+            /* FIX 2: Memaksa map agar mau mengalah dan tidak mendorong panel ke bawah */
+            min-height: 0; 
+        }
         .leaflet-routing-container { display: none !important; }
 
         /* PANEL BOTTOM */
         .order-panel {
             background: var(--white);
-            padding: 20px;
+            /* FIX 3: Tambahkan safe-area-inset untuk jarak aman tombol navigasi bawah (iPhone/Android modern) */
+            padding: 20px 20px calc(20px + env(safe-area-inset-bottom)) 20px;
             border-radius: 25px 25px 0 0;
             box-shadow: var(--shadow);
             z-index: 100;
             position: relative;
+            /* FIX 4: Mencegah panel ini menyusut atau tertekan oleh map */
+            flex-shrink: 0; 
         }
 
         .status-badge {
@@ -126,6 +137,7 @@
             text-transform: uppercase;
             letter-spacing: 1px;
             box-shadow: 0 4px 15px rgba(255,0,0,0.2);
+            padding: 15px 0; /* Area klik lebih nyaman */
         }
 
         /* CHAT MODAL */
@@ -140,13 +152,16 @@
         .chat-header {
             background: var(--primary);
             color: white;
-            padding: 15px;
+            padding: calc(15px + env(safe-area-inset-top)) 15px 15px 15px; /* Aman untuk poni/notch layar atas */
             display: flex;
             align-items: center;
             justify-content: space-between;
         }
         #chatContent { flex: 1; padding: 20px; overflow-y: auto; background: #fafafa; }
-        .chat-input-area { padding: 15px; display: flex; gap: 10px; border-top: 1px solid #eee; }
+        .chat-input-area { 
+            padding: 15px 15px calc(15px + env(safe-area-inset-bottom)) 15px; 
+            display: flex; gap: 10px; border-top: 1px solid #eee; 
+        }
         .chat-input-area input { flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 10px; }
 
         /* ONAR CUSTOM MODAL */
